@@ -16,7 +16,7 @@ int main()
 
 	std :: cout << "Handler opened the camera" << endl;
 	NetworkHandler nh;
-	nh.init("tcp://*5555");
+	nh.init("tcp://*:5555");
 
 	while (true) {
 		
