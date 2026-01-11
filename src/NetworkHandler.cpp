@@ -31,8 +31,9 @@ void NetworkHandler::sendFrame(cv::Mat& frame) { // &  reference pass by memory 
 	params.push_back(80);
 	cv::imencode(".jpg", frame, buffer, params);
 	zmq::message_t message(buffer.size());
-
-	memcpy(buffer.data(), message.data(), buffer.size());
+	// (Destination, Source, Size) ye niche galat hai
+	// memcpy(buffer.data(), message.data(), buffer.size());
+	memcpy(mess)
 	publisher.send(message, zmq :: send_flags :: none);
 
 }
