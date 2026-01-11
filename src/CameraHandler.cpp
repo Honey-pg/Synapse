@@ -2,7 +2,7 @@
 
 // Constructor
 CameraHandler::CameraHandler() {
-    // Yahan initialization hoti hai
+  
 }
 
 bool CameraHandler::initCamera(int id) {
@@ -10,7 +10,13 @@ bool CameraHandler::initCamera(int id) {
 }
 
 cv::Mat CameraHandler::getFrame() {
-    cv::Mat frame;
-    cap >> frame; // Camera se frame nikaal kar frame Mat mein daalna
-    return frame;
+    cv::Mat tempFrame;
+    cap >> tempFrame;
+    if (tempFrame.empty())
+        return tempFrame;
+	cv::flip(tempFrame, tempFrame, 1);
+    /*input and output dono same hai jisse 
+    in - place operation hota hai, new memory allocate nahi hoti 
+    */
+    return tempFrame;
 }
