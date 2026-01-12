@@ -7,8 +7,9 @@ include_directories(include)
 
 set(SOURCES 
     src/main.cpp   
-    src/CameraHandler.cpp
-    include/NetworkHandler.h
+    src/CameraHandler.cpp 
+    src/NetworkHandler.cpp
+    include/NetworkHandler.h 
     include/CameraHandler.hpp
 )  
 
