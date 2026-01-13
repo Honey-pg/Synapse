@@ -1,4 +1,3 @@
-
 from faster_whisper.transcribe import Segment
 import speech_recognition as sr
 from faster_whisper import WhisperModel
@@ -43,11 +42,11 @@ def  listen_and_transcribe():
 
 def check_exit(text):
     if not text:
-            return False
-     exit_phrases = ["exit", "quit", "stop", "terminate", "end", "later", "talk soon", "bye", "adios"]
-     if any(phrase in text.lower() for phrase in exit_phrases):
-            return True
-     return False
+        return False
+    exit_phrases = ["exit", "quit", "stop", "terminate", "later", "talk soon", "bye", "adios"]
+    if any(phrase in text.lower() for phrase in exit_phrases):
+        return True
+    return False
 
 
 if __name__ == "__main__":
@@ -55,7 +54,8 @@ if __name__ == "__main__":
         while True:
             text = listen_and_transcribe()
 
-            check_exit(text)
+            if check_exit(text):
+               break
     except KeyboardInterrupt:
         print("Program interrupted by user.")
     finally:
