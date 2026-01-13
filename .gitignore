@@ -3,4 +3,15 @@
 "build/" 
 "*.user" 
 "vcpkg_installed/" 
-"*.pt"
+
+# Python specific
+python/venv/
+**/__pycache__/
+*.pyc
+
+# ML Models & Heavy Files (IMPORTANT)
+*.pt
+*.onnx
+*.weights
+temp_audio.wav
+response.mp3
