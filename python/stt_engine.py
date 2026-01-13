@@ -41,13 +41,21 @@ def  listen_and_transcribe():
             print(f"An error occurred: {e}")
             return None
 
+def check_exit(text):
+    if not text:
+            return False
+     exit_phrases = ["exit", "quit", "stop", "terminate", "end", "later", "talk soon", "bye", "adios"]
+     if any(phrase in text.lower() for phrase in exit_phrases):
+            return True
+     return False
+
+
 if __name__ == "__main__":
     try:
         while True:
             text = listen_and_transcribe()
-            if text and "exit" in text.lower():
-                print("Exiting...")
-                break
+
+            check_exit(text)
     except KeyboardInterrupt:
         print("Program interrupted by user.")
     finally:
