@@ -17,6 +17,7 @@ def listen_and_transcribe():
     recognizer = sr.Recognizer()
     with sr.Microphone() as source:
         recognizer.adjust_for_ambient_noise(source, duration=0.5)
+        recognizer.pause_threshold = 0.6
         try:
             print("Listening...")
             audio = recognizer.listen(source, timeout=5, phrase_time_limit=10)
@@ -42,7 +43,7 @@ def listen_and_transcribe():
 def check_exit(text):
     if not text:
         return False
-    exit_phrases = ["exit", "quit", "stop", "terminate", "later", "talk soon", "bye", "adios"]
+    exit_phrases = ["exit", "quit", "stop", "terminate", "later", "talk soon", "bye", "adios", "see you later"]
     if any(phrase in text.lower() for phrase in exit_phrases):
         return True
     return False
