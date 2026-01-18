@@ -1,6 +1,4 @@
 
-from tkinter import SEL
-from python.engine import stt_engine
 from stt_engine import STT_Engine
 from tts_engine import TTS_Engine
 from llm_engine import LLM_Engine
@@ -15,16 +13,23 @@ class Synapse :
         self.ear = STT_Engine()
         self.mouth  = TTS_Engine()
         self.brain = LLM_Engine()
-        self.mouth.speak("System Online. Ready for commands")
+        self.mouth.speak("System Online. Ready for commands, hi my name is sarah how may I help you")
+
+
+    def check_exit(self, text):
+        exit_phrases = ["exit", "quit", "stop", "terminate", "bye", "adios"]
+        if any(phrase in text.lower() for phrase in exit_phrases):
+            return True
+        return False
 
     def start(self) :
         while True :
             command = self.ear.listen()
             if command :
-                if stt_engine.check_exit(command) : 
+                if self.check_exit(command): 
                     self.mouth.speak("Goodbye, see you latter !")
                     break;
-                ai_response = self.brain.chat(self,command)
+                ai_response = self.brain.chat(command)
                 self.mouth.speak(ai_response)
 
 if __name__ == "__main__" :
