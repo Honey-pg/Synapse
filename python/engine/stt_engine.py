@@ -53,7 +53,8 @@ class STT_Engine:
                 print(colorama.Fore.RED + f"\nError: {e}")
                 return None
 
-# Ye helper function class ke bahar hi thik hai
+# Ye helper function class ke bahar hi thik hai 
+# This method is just for checking purpose I already have this method in main.py
 def check_exit(text):
     if not text:
         return False

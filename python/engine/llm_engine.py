@@ -7,7 +7,7 @@ class LLM_Engine:
             ]
     def chat(self,text) :
         self.history.append({"role": "user", "content": text})
-        response = ollama.chat(model= 'llama3.1', messages=self.history)
+        response = ollama.chat(model= 'llama3.1:8b', messages=self.history)
         reply = response['message']['content']
         self.history.append({"role": "assistant", "content": reply})
         return reply
