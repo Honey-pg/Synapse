@@ -1,0 +1,81 @@
+from faster_whisper import WhisperModel
+import speech_recognition as sr
+import numpy as np
+import time
+import colorama
+import os
+
+# Colors init
+colorama.init(autoreset=True)
+
+class STT_Engine:
+    def __init__(self):
+        print(colorama.Fore.CYAN + "[STT] Initializing Whisper Model...")
+        
+        # Configuration
+        model_size = "medium"
+        device = "cuda"  # Agar error aaye to "cpu" kar dena
+        compute_type = "float16" # CPU ke liye "int8" use karna
+        
+        start_time = time.time()
+        self.model = WhisperModel(model_size, device=device, compute_type=compute_type)
+        print(colorama.Fore.GREEN + f"[STT] Model loaded in {time.time() - start_time:.2f} seconds")
+        
+        self.recognizer = sr.Recognizer()
+        self.recognizer.pause_threshold = 0.6
+
+    def listen(self):
+        with sr.Microphone() as source:
+            # Noise adjust
+            self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+            print(colorama.Fore.YELLOW + "\n[Listening]...", end="", flush=True)
+            
+            try:
+                # Sunna shuru karo
+                audio = self.recognizer.listen(source, timeout=5, phrase_time_limit=10)
+                
+                # Raw Audio Processing (Fastest Method)
+                raw_data = audio.get_raw_data(convert_rate=16000, convert_width=2)
+                audio_np = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32) / 32768.0
+                
+                # Transcribe
+                segments, info = self.model.transcribe(audio_np, beam_size=5)
+                text = " ".join([segment.text for segment in segments])
+
+                if text.strip():
+                    return text.strip()
+                else:
+                    return None
+                    
+            except sr.WaitTimeoutError:
+                return None
+            except Exception as e:
+                print(colorama.Fore.RED + f"\nError: {e}")
+                return None
+
+# Ye helper function class ke bahar hi thik hai
+def check_exit(text):
+    if not text:
+        return False
+    exit_phrases = ["exit", "quit", "stop", "terminate", "bye", "adios"]
+    if any(phrase in text.lower() for phrase in exit_phrases):
+        return True
+    return False
+
+# Testing Code (Sirf tab chalega jab is file ko directly run karoge)
+if __name__ == "__main__":
+    try:
+        # Class ka object banao
+        engine = STT_Engine()
+        
+        while True:
+            # Object ka function call karo
+            text = engine.listen()
+            
+            if text:
+                print(f"\nUser Said: {text}")
+                if check_exit(text):
+                    print("Exiting...")
+                    break
+    except KeyboardInterrupt:
+        print("\nStopped by User")
