@@ -1,17 +1,55 @@
-".vs/" 
-"out/" 
-"build/" 
-"*.user" 
-"vcpkg_installed/" 
+# --- C++ / Visual Studio Junk ---
+.vs/
+out/
+build/
+x64/
+Debug/
+Release/
+*.user
+*.aps
+*.idb
+*.ncp
+*.obj
+*.pch
+*.sbr
+*.tlog
+*.pdb
+*.ilk
+*.exe
+vcpkg_installed/
 
-# Python specific
+# --- Python Specific ---
 python/venv/
+python/synapse_env/
 **/__pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-# ML Models & Heavy Files (IMPORTANT)
+# --- AI Models (VERY IMPORTANT - DO NOT COMMIT) ---
 *.pt
+*.pth
 *.onnx
 *.weights
+*.bin
+*.h5
+*.tflite
+models/
+python/engine/buffalo_l/
+python/engine/yolov8n.pt
+
+# --- Temporary Media Files ---
+*.wav
+*.mp3
+*.jpg
+*.png
+*.avi
+*.mp4
 temp_audio.wav
 response.mp3
+trinetra.db
+vision_pro.db
+
+# --- OS Specific ---
+.DS_Store
+Thumbs.db
