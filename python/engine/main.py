@@ -1,6 +1,6 @@
 from stt_engine import STT_Engine
 from tts_engine import TTS_Engine
-from llm_engine import LLM_Engine
+from llm_engine_old import LLM_Engine
 from vision_pro import Vision_Pro
 import colorama
 
@@ -34,10 +34,10 @@ class Synapse:
                 vision_triggers = ["who is this", "who is that", "identify", "do you know", "scan this"]
                 if any(trigger in command for trigger in vision_triggers):
 
-                    # 1. Class name nahi, Object use karo (self.vision)
+
                     detected_people = self.vision.scan_scene()
 
-                    # 2. Result handle karo (List aayegi)
+
                     if not detected_people:
                         self.mouth.speak("I cannot see anyone.")
 
@@ -60,7 +60,7 @@ class Synapse:
                     self.mouth.speak(ai_response)
 
     def handle_registration_flow(self):
-        self.mouth.speak("I see someone new here, please register yourself.")
+        self.mouth.speak("I see someone new here, do you want me to remember them? (yes/no)")
 
         response = self.ear.listen()
         if not response or "yes" not in response.lower():

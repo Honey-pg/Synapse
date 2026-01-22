@@ -1,13 +1,14 @@
 import cv2
 import numpy as np
 import sqlite3
-
-from torch.nn.functional import embedding
+import time
 from ultralytics import YOLO
 from insightface.app import FaceAnalysis
 import pickle
 import json
 import colorama
+
+from python.engine.tts_engine import TTS_Engine
 
 
 class Vision_Pro:
@@ -90,6 +91,7 @@ class Vision_Pro:
         print(colorama.Fore.GREEN + f"[Vision] Loaded {len(self.known_names)} identities.")
 
     def register_face(self, frame, name, info_dict):
+        # 1. FRONT FACE (Jo frame pass hua hai use hi use kar lo)
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         faces = self.app.get(rgb_frame)
 
@@ -97,21 +99,72 @@ class Vision_Pro:
             print(f'No faces detected')
             return False
 
-        face = sorted(faces, key=lambda x: x.bbox[2] * x.bbox[3])[-1]
-        embedding = face.embedding
+        TTS_Engine.speak("Hold on, capturing front view.")
+        # front face capture
+        face_straight = sorted(faces, key=lambda x: x.bbox[2] * x.bbox[3])[-1]
+        embedding_straight = face_straight.embedding
 
-        binary_enc = pickle.dumps(embedding)
+        # 2. left face
+        TTS_Engine.speak("Now turn your face slightly to the left.")
+        time.sleep(2)  # User ko time do
+
+        ret, frame_left = self.cap.read()  # NEW PHOTO
+        if not ret: return False
+
+        rgb_left = cv2.cvtColor(frame_left, cv2.COLOR_BGR2RGB)
+        faces_left = self.app.get(rgb_left)
+
+        if len(faces_left) == 0:
+            TTS_Engine.speak("Face not found in left view, using front view instead.")
+            embedding_left = embedding_straight  # Fallback
+        else:
+            face_left_obj = sorted(faces_left, key=lambda x: x.bbox[2] * x.bbox[3])[-1]
+            embedding_left = face_left_obj.embedding
+
+        # right face lelo
+        TTS_Engine.speak("Now turn slightly to the right.")
+        time.sleep(2)
+
+        ret, frame_right = self.cap.read()  # <--- NEW PHOTO
+        if not ret: return False
+
+        rgb_right = cv2.cvtColor(frame_right, cv2.COLOR_BGR2RGB)
+        faces_right = self.app.get(rgb_right)
+
+        if len(faces_right) == 0:
+            TTS_Engine.speak("Face not found in right view, using front view instead.")
+            embedding_right = embedding_straight  # Fallback
+        else:
+            face_right_obj = sorted(faces_right, key=lambda x: x.bbox[2] * x.bbox[3])[-1]
+            embedding_right = face_right_obj.embedding  # <--- CORRECTED
+
+        # info sunte hi json me dump karo
         json_info = json.dumps(info_dict)
 
+        # Binary convert
+        binary_enc_straight = pickle.dumps(embedding_straight)
+        binary_enc_left = pickle.dumps(embedding_left)
+        binary_enc_right = pickle.dumps(embedding_right)
+
+        # 3 Rows Insert karo
         self.cursor.execute("INSERT INTO humans (name, embedding, info) VALUES (?, ?, ?)",
-                            (name, binary_enc, json_info))
+                            (name, binary_enc_straight, json_info))
+        self.cursor.execute("INSERT INTO humans (name, embedding, info) VALUES (?, ?, ?)",
+                            (name, binary_enc_left, json_info))
+        self.cursor.execute("INSERT INTO humans (name, embedding, info) VALUES (?, ?, ?)",
+                            (name, binary_enc_right, json_info))
         self.conn.commit()
 
-        self.known_embeddings.append(embedding)
-        self.known_names.append(name)
-        self.known_info.append(info_dict)
+        # List length barabar honi chahiye
+        self.known_embeddings.append(embedding_straight)
+        self.known_embeddings.append(embedding_left)
+        self.known_embeddings.append(embedding_right)
 
-        print(colorama.Fore.GREEN + f"[Vision] Registered new face: {name}")
+        # Name aur Info ko bhi 3 baar add karna padega taaki index match ho
+        self.known_names.extend([name, name, name])
+        self.known_info.extend([info_dict, info_dict, info_dict])
+
+        print(colorama.Fore.GREEN + f"[Vision] Registered new face: {name} (3 Angles)")
         return True
 
     def recognize(self, frame):
