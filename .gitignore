@@ -31,7 +31,7 @@ python/synapse_env/
 *.sqlite3
 # Build/Compile Kachra (Ye VS lock karta hai)
 cmake-build-*/
-
+.git/*.lock
 # Python Cache
 __pycache__/
 
