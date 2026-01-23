@@ -7,7 +7,7 @@ from insightface.app import FaceAnalysis
 import pickle
 import json
 import colorama
-
+from thefuzz import process
 from python.engine.tts_engine import TTS_Engine
 
 
@@ -16,7 +16,11 @@ class Vision_Pro:
         print('Initializing Vision Pro Engine...')
         self.yolo = YOLO('yolov8n.pt')  # self == this
 
-        self.app = FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+        self.app = FaceAnalysis(
+            name='buffalo_l',
+            providers=['CPUExecutionProvider']
+        )
+
         # buffallo_l model use kar raha hai agar
         # cuda available hai to use karega nahi to CPU
 
@@ -90,7 +94,7 @@ class Vision_Pro:
 
         print(colorama.Fore.GREEN + f"[Vision] Loaded {len(self.known_names)} identities.")
 
-    def register_face(self, frame, name, info_dict):
+    def register_face(self, frame, name, info_dict, tts_engine):
         # 1. FRONT FACE (Jo frame pass hua hai use hi use kar lo)
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         faces = self.app.get(rgb_frame)
@@ -99,13 +103,13 @@ class Vision_Pro:
             print(f'No faces detected')
             return False
 
-        TTS_Engine.speak("Hold on, capturing front view.")
+        tts_engine.speak("Hold on, capturing front view.")
         # front face capture
         face_straight = sorted(faces, key=lambda x: x.bbox[2] * x.bbox[3])[-1]
         embedding_straight = face_straight.embedding
 
         # 2. left face
-        TTS_Engine.speak("Now turn your face slightly to the left.")
+        tts_engine.speak("Now turn your face slightly to the left.")
         time.sleep(2)  # User ko time do
 
         ret, frame_left = self.cap.read()  # NEW PHOTO
@@ -115,14 +119,14 @@ class Vision_Pro:
         faces_left = self.app.get(rgb_left)
 
         if len(faces_left) == 0:
-            TTS_Engine.speak("Face not found in left view, using front view instead.")
+            tts_engine.speak("Face not found in left view, using front view instead.")
             embedding_left = embedding_straight  # Fallback
         else:
             face_left_obj = sorted(faces_left, key=lambda x: x.bbox[2] * x.bbox[3])[-1]
             embedding_left = face_left_obj.embedding
 
         # right face lelo
-        TTS_Engine.speak("Now turn slightly to the right.")
+        tts_engine.speak("Now turn slightly to the right.")
         time.sleep(2)
 
         ret, frame_right = self.cap.read()  # <--- NEW PHOTO
@@ -132,7 +136,7 @@ class Vision_Pro:
         faces_right = self.app.get(rgb_right)
 
         if len(faces_right) == 0:
-            TTS_Engine.speak("Face not found in right view, using front view instead.")
+            tts_engine.speak("Face not found in right view, using front view instead.")
             embedding_right = embedding_straight  # Fallback
         else:
             face_right_obj = sorted(faces_right, key=lambda x: x.bbox[2] * x.bbox[3])[-1]
@@ -163,7 +167,7 @@ class Vision_Pro:
         # Name aur Info ko bhi 3 baar add karna padega taaki index match ho
         self.known_names.extend([name, name, name])
         self.known_info.extend([info_dict, info_dict, info_dict])
-
+        tts_engine.speak(f"Now I will remember you {name}.")
         print(colorama.Fore.GREEN + f"[Vision] Registered new face: {name} (3 Angles)")
         return True
 
@@ -218,6 +222,22 @@ class Vision_Pro:
             name = face['name']
             found_names.append(name)
         return found_names
+
+    def get_info(self, name):
+        # Safety check: If name is None or not in our database
+        if name is None:
+            return None
+        if name not in self.known_names:
+            return None
+        best_match, score = process.extractOne(name, self.known_names)
+        print(f"Debug : input {name} with {best_match} and {score}")
+        if score > 75:
+            idx = self.known_names.index(best_match)
+            return best_match,self.known_info[idx]
+        else:
+            print(f"Can't recognize {name}")
+            return None
+
 
 
 if __name__ == "__main__":
