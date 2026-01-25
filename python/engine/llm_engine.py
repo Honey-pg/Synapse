@@ -1,11 +1,14 @@
 import json
+import time
 
+import colorama
 import ollama
 
 
 class LLM_Engine:
     def __init__(self):
         # Sarah System Prompt (Strict Language Enforcer)
+        print(colorama.Fore.YELLOW + "[STT] Initializing Whisper Model...")
         system_instructions = """
                 You are Sarah, a witty conversational AI. 
 
@@ -20,6 +23,8 @@ class LLM_Engine:
         self.history = [
             {"role": "system", "content": system_instructions}
         ]
+        start_time = time.time()
+        print(colorama.Fore.GREEN + f"[STT] Model loaded in {time.time() - start_time:.2f} seconds")
 
     def chat(self, text):
         # Debugging: Dekho ki Whisper kya bhej raha hai
@@ -119,6 +124,38 @@ class LLM_Engine:
         except Exception as e:
             print(f"Couldn't get the name: {e}")
             return None
+
+    def play_music(self, command):
+        system_prompt = """
+        You are a Music Entity Extractor. 
+        Extract ONLY the song name or artist from the user command.
+
+        Rules:
+        1. Remove keywords like "play", "song", "music", "sunao", "bajao", "please".
+        2. Return ONLY the song name. No quotes, no explanations.
+        3. If the user is NOT asking to play a song (e.g., "I like to play cricket"), return "None".
+
+        Examples:
+        Input: "Play Gehra hua" -> Output: Gehra hua
+        Input: "Arijit Singh ke gaane bajao" -> Output: Arijit Singh
+        Input: "Play football" -> Output: None
+        """
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": command}
+        ]
+        try:
+            response = ollama.chat(model='qwen2.5:3b-instruct', messages=messages)
+            content = response['message']['content'].strip()
+
+            cleaned = content.replace('"', '').replace("'", "")
+            return cleaned
+        except Exception as e:
+            print(f"Music Extraction Error: {e}")
+            return None
+
+
 
     def generate_info(self, json_text, name):
         # 1. System Prompt (Strict Rules)

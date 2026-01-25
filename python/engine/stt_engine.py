@@ -12,9 +12,9 @@ class STT_Engine:
         print(colorama.Fore.CYAN + "[STT] Initializing Whisper Model...")
         
         # Configuration
-        model_size = "medium"
+        model_size = "distil-large-v3"
         device = "cuda"  # Agar error aaye to "cpu" kar dena
-        compute_type = "float16" # CPU ke liye "int8" use karna
+        compute_type = "int8" # CPU ke liye "int8" use karna
         
         start_time = time.time()
         self.model = WhisperModel(model_size, device=device, compute_type=compute_type)
@@ -55,7 +55,7 @@ class STT_Engine:
                 hallucinations = [
                     "thank you", "thanks", "you", "watching", "subtitles",
                     "copyright", "audio", "bye", "amara", "org",
-                    "the user speaks in hinglish",  # <--- YE HAI CULPRIT
+                    "the user speaks in hinglish",  # YE HAI CULPRIT
                     "user speaks in hinglish",
                     "thank you for watching"
                 ]

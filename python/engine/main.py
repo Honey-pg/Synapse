@@ -1,6 +1,8 @@
+from python.engine.music_engine import MusicEngine
 from stt_engine import STT_Engine
 from tts_engine import TTS_Engine
 from llm_engine import LLM_Engine
+import threading
 
 from vision_pro import Vision_Pro
 import colorama
@@ -17,6 +19,7 @@ class Synapse:
         self.mouth = TTS_Engine()
         self.ear = STT_Engine()
         self.brain = LLM_Engine()
+        self.music = MusicEngine()
         self.mouth.speak("Hi there")
 
     def check_exit(self, text):
@@ -44,7 +47,36 @@ class Synapse:
                     if self.check_exit(command_lower):
                         self.mouth.speak("Goodbye!")
                         break
+                    music_triggers = ["play", "bajao", "sunao", "song", "music", "gana"]
+                    music_triggers = ["play", "bajao", "sunao", "song", "music", "gana"]
 
+                    # Logic: Agar command me "play" hai (par ye koi question nahi hai)
+                    if any(trigger in command_lower for trigger in music_triggers):
+
+                        # 1. Brain se Song Name nikalo
+                        # Note: Make sure brain_engine.py me function ka naam 'play_music' hi ho
+                        song_name = self.brain.play_music(command_lower)
+
+                        # ... (Music Logic ke andar) ...
+
+                        if song_name and song_name.lower() != "unknown" and song_name.lower() != "none":
+                            print(f"🎵 Extracting Song: {song_name}")
+                            self.mouth.speak(f"Sure, playing {song_name}.")
+
+                            # 2. Threading Start
+                            t = threading.Thread(target=self.music.play, args=(song_name,))
+                            t.start()
+
+                            #  Second ka break lo taaki download ho jaye
+                            # aur Sarah khud ki awaaz na sune
+                            print("[System] Waiting for music to start...")
+                            time.sleep(5)
+
+                            continue
+                        else:
+                            self.mouth.speak("I couldn't understand the song name.")
+
+                        continue
                     # REGISTRATION TRIGGERS
                     # (Sabse pehle check karo agar user naya banda add karna chahta hai)
                     registration_triggers = [
@@ -107,7 +139,7 @@ class Synapse:
 
                         continue
 
-                        # -: GENERAL CHAT (Fallback)
+                        # := GENERAL CHAT (Fallback)
                     print(f"💬 General Chat: {command}")
                     ai_response = self.brain.chat(command)
                     self.mouth.speak(ai_response)
@@ -123,12 +155,12 @@ class Synapse:
             while self.mouth._is_speaking:
                 time.sleep(0.1)
 
-        # --- STEP 1: CONTEXT CHECK (Unknown Face Trigger) ---
+        #  CONTEXT CHECK (Unknown Face Trigger)
         if auto_trigger:
             self.mouth.speak("I see someone new. Do you want me to remember them?")
             wait_for_sarah()
 
-            # 🛑 STRICT LOOP: Jab tak Haan/Na nahi milta, yahi rukenge
+            # Jab tak Haan/Na nahi milta, yahi rukenge
             print("[System] Waiting for User Decision (Yes/No)...")
             decision_made = False
 
@@ -151,7 +183,7 @@ class Synapse:
                 self.mouth.speak("No response. Ignoring for now.")
                 return
 
-                # --- STEP 2: NAME GATHERING ---
+        # NAME GATHERING
         self.mouth.speak("Okay, tell me their name.")
         wait_for_sarah()
 
@@ -182,7 +214,7 @@ class Synapse:
                 wait_for_sarah()
                 continue
 
-            # --- SMART CONFIRMATION ---
+            # SMART CONFIRMATION
             self.mouth.speak(f"I heard {extracted_name}. Is that correct?")
             wait_for_sarah()
 
@@ -190,7 +222,8 @@ class Synapse:
 
             if confirm and any(w in confirm.lower() for w in ["yes", "haan", "sahi", "right", "correct"]):
                 final_name = extracted_name
-                final_info = extracted_info
+                if len(extracted_info) > 2:
+                    final_info = extracted_info
                 break
             else:
                 self.mouth.speak("Sorry. Please say the name again.")
@@ -201,6 +234,43 @@ class Synapse:
         if not final_name:
             self.mouth.speak("I am struggling to hear. Let's try later.")
             return
+
+        # EXISTING USER CHECK (Ye Naya Logic Hai)
+        # Vision engine se poocho kya ye banda pehle se hai?
+        existing_info = self.vision.check_person_exists(final_name)
+
+        if existing_info:
+            current_details = existing_info.get("details", "No details provided")
+            self.mouth.speak(f"Wait, I already know {final_name}. You told me: {current_details}.")
+            wait_for_sarah()
+
+            self.mouth.speak("Do you want to update this information?")
+            wait_for_sarah()
+
+            update_response = self.ear.listen()
+
+            # Agar user bole "Yes" ya "Update"
+            if update_response and any(w in update_response.lower() for w in ["yes", "haan", "update", "change"]):
+                self.mouth.speak(f"Okay, tell me, who is {final_name} now?")
+                wait_for_sarah()
+
+                new_details = self.ear.listen()
+                if new_details:
+                    new_info_dict = {"details": new_details, "added_on": time.strftime("%Y-%m-%d"), "updated": True}
+
+                    # DB Update Call
+                    if self.vision.update_person_info(final_name, new_info_dict):
+                        self.mouth.speak(f"Done. I have updated the information for {final_name}.")
+                    else:
+                        self.mouth.speak("Failed to update database.")
+                else:
+                    self.mouth.speak("I didn't hear anything. Keeping old info.")
+            else:
+                self.mouth.speak("Okay, keeping the existing information.")
+
+            return  # (Photo lene ki zaroorat nahi hai)
+
+        # MANDATORY INFO (Sirf New Users Ke Liye)
         if len(final_info) < 5:
             self.mouth.speak(
                 f"Got it, {final_name}. Now, tell me, who is he? What do you want me to remember about him?")
@@ -215,7 +285,7 @@ class Synapse:
                 self.mouth.speak("Okay, I'll just remember him as a friend.")
                 wait_for_sarah()
 
-        # --- STEP 3: VISION REGISTRATION ---
+        # STEP 5: VISION REGISTRATION (Photo Session)
         self.mouth.speak(f"Registering {final_name}. Look at the camera.")
         wait_for_sarah()
 

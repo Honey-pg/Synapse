@@ -201,6 +201,36 @@ class Vision_Pro:
         print(colorama.Fore.GREEN + f"[Vision] Registered new face: {name} (4 Angles)")
         return True
 
+        # --- 🛠️ NEW HELPER FUNCTIONS ---
+
+        def check_person_exists(self, name):
+            """Check if person exists and return their current info"""
+            try:
+                # Case-insensitive search
+                self.cursor.execute("SELECT info FROM humans WHERE name LIKE ?", (name,))
+                row = self.cursor.fetchone()
+                if row:
+                    return json.loads(row[0])  # Return Info Dict
+                return None
+            except Exception:
+                return None
+
+        def update_person_info(self, name, new_info_dict):
+            """Updates only the info, keeps the face data"""
+            try:
+                json_info = json.dumps(new_info_dict)
+                # Update all entries for this name (Front, Left, Right etc.)
+                self.cursor.execute("UPDATE humans SET info = ? WHERE name LIKE ?", (json_info, name))
+                self.conn.commit()
+
+                # Memory list bhi update karni padegi (Thoda complex hai, reload karna best hai)
+                self.load_known_faces()  # Reload DB to RAM
+                return True
+            except Exception as e:
+                print(f"Update Error: {e}")
+                return False
+
+
     def recognize(self, frame):
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         faces = self.app.get(rgb_frame)

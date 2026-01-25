@@ -1,115 +1,86 @@
-
-import subprocess
-import threading
-import time
 import pygame
 import yt_dlp
 import os
 import tempfile
+import time
+
 
 class MusicEngine:
     def __init__(self):
-        """Initialize the MusicEngine."""
-        # Initialize pygame mixer
-        pygame.mixer.init()
-        self.process = None
+        if not pygame.mixer.get_init():
+            pygame.mixer.init(frequency=44100)
+
         self.is_playing = False
-        self._volume = 0.5
+        self._volume = 1.0  #  ISKO 0.5 SE 1.0 KAR DO
         self.current_file = None
-        
-    def search_and_get_stream(self, song_name):
-        """
-        Search for a song on YouTube and return the streaming URL.
-        """
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'quiet': True,
-            'no_warnings': True,
-            'default_search': 'ytsearch1',
-            'noplaylist': True,
-            'skip_download': True,
-        }
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            try:
-                info = ydl.extract_info(f"ytsearch1:{song_name}", download=False)
-                if 'entries' in info:
-                    video = info['entries'][0]
-                else:
-                    video = info
-                    
-                return video.get('webpage_url'), video.get('title')
-            except Exception as e:
-                print(f"Error searching for song: {e}")
-                return None, None
 
     def play(self, song_name):
         """
-        Download to temp file and play.
+        Searches, Downloads, and Plays the song using native yt-dlp (No subprocess).
         """
-        self.stop() # Stop any current playback
-        
-        stream_url, title = self.search_and_get_stream(song_name)
-        if not stream_url:
-            print("Could not find song.")
-            return
+        self.stop()  # Stop previous song if any
 
-        print(f"Playing: {title}")
-        
-        # Create temp file
-        # We need a path, but yt-dlp adds extension.
-        # So we create a directory or use a fixed name template.
-        # Let's use a unique name.
-        fd, temp_path = tempfile.mkstemp(prefix='music_engine_', suffix='.mp3')
-        os.close(fd)
-        os.remove(temp_path) # yt-dlp will create it
-        
-        # yt-dlp command to download and convert to mp3
-        # We use --output to specify exact path (but we must handle extension)
-        # Actually simplest is to let yt-dlp handle extension and we find it.
-        # But we want mp3.
-        
-        yt_cmd = [
-            'yt-dlp',
-            '-f', 'bestaudio/best',
-            '-x',                 # Extract audio
-            '--audio-format', 'mp3',
-            '--audio-quality', '128K', # Fast
-            '-o', temp_path,      # Output to this path (yt-dlp might append .mp3 if missing, but we gave it?)
-                                  # If we say -o temp_path and temp_path ends in .mp3, yt-dlp usually respects it 
-                                  # if we don't use %(ext)s. 
-                                  # BUT with -x --audio-format mp3, it ensures mp3.
-            '--quiet',
-            '--no-warnings',
-            '--force-overwrites',
-            stream_url
-        ]
-        
+        print(f"🔎 Searching & Downloading: {song_name}...")
+
+        # Temp directory aur filename setup
+        temp_dir = tempfile.gettempdir()
+        filename = f"synapse_music_{int(time.time())}"
+        save_path = os.path.join(temp_dir, filename)
+
+        # YT-DLP CONFIGURATION
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': save_path + '.%(ext)s',  # Temp path template
+            'quiet': True,
+            'no_warnings': True,
+            'nocheckcertificate': True,
+
+            # FOR 403 FORBIDDEN ERROR
+            # Hum YouTube ko bolenge hum 'Android App' hain, Bot nahi.
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web'],
+                }
+            },
+
+            # Audio Convert to MP3 (Requires FFmpeg)
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '128',
+            }],
+        }
+
         try:
-            # Run yt-dlp synchronously (blocking)
-            # This is the trade-off for robustness.
-            # Usually takes 1-3 seconds.
-            subprocess.run(yt_cmd, check=True)
-            
-            self.current_file = temp_path
-            
-            # Check if file exists (yt-dlp might have added suffix or something)
-            # With -o path.mp3 and -x --audio-format mp3, it usually works.
-            
-            if not os.path.exists(self.current_file):
-                # Fallback check
-                if os.path.exists(self.current_file + ".mp3"):
-                     self.current_file += ".mp3"
-            
-            pygame.mixer.music.load(self.current_file)
-            pygame.mixer.music.set_volume(self._volume)
-            pygame.mixer.music.play()
-            self.is_playing = True
-            
-        except subprocess.CalledProcessError as e:
-            print(f"Error downloading: {e}")
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                # 1. Search & Download directly (Faster than separating them)
+                # "ytsearch1:" ka matlab pehla result download karo
+                info = ydl.extract_info(f"ytsearch1:{song_name}", download=True)
+
+                # Title nikalo display ke liye
+                if 'entries' in info:
+                    title = info['entries'][0]['title']
+                else:
+                    title = info['title']
+
+                print(f"🎵 Ready to Play: {title}")
+
+                # yt-dlp file convert karke .mp3 extension laga deta hai
+                final_path = save_path + ".mp3"
+
+                if os.path.exists(final_path):
+                    self.current_file = final_path
+
+                    # 2. Pygame Play
+                    pygame.mixer.music.load(self.current_file)
+                    pygame.mixer.music.set_volume(self._volume)
+                    pygame.mixer.music.play()
+                    self.is_playing = True
+                else:
+                    print("❌ Download Error: File not found after download.")
+
         except Exception as e:
-            print(f"Error playing: {e}")
+            print(f"❌ Music Error: {e}")
             self.stop()
 
     def pause(self):
@@ -123,20 +94,22 @@ class MusicEngine:
             self.is_playing = True
 
     def stop(self):
+        """Stops music and cleans up temp files safely."""
         try:
             pygame.mixer.music.stop()
-            pygame.mixer.music.unload() 
+            pygame.mixer.music.unload()
         except:
             pass
-            
+
         self.is_playing = False
-        
-        # Cleanup temp file
+
+        # Temp file delete karne se pehle thoda wait karo taaki file free ho jaye
         if self.current_file and os.path.exists(self.current_file):
             try:
+                time.sleep(0.1)
                 os.remove(self.current_file)
-            except:
-                pass
+            except Exception:
+                pass  # Agar delete na ho paye to ignore karo (Windows lock issue)
             self.current_file = None
 
     def set_volume(self, volume):
