@@ -1,125 +1,207 @@
-import edge_tts
+import threading
 import pygame
-import asyncio
 import io
+import soundfile as sf
+from kokoro_onnx import Kokoro
+import os
+import urllib.request
 import time
-import re
+import numpy as np
+import queue  #  Queue for streaming
+import re  #  Sentence detection
 
+#  MONKEY PATCH (Standard Fix)
+if not hasattr(np, "original_load"):
+    np.original_load = np.load
+
+
+def smart_load(*args, **kwargs):
+    if 'allow_pickle' not in kwargs:
+        kwargs['allow_pickle'] = True
+    return np.original_load(*args, **kwargs)
+
+
+np.load = smart_load
 
 class TTS_Engine:
+    _is_speaking = False
+    _stop_event = threading.Event()
+    _current_thread = None
+    _kokoro = None
+
     def __init__(self):
-        pygame.mixer.init()
+        if not pygame.mixer.get_init():
+            pygame.mixer.init()
 
-        # Voice Settings
-        # Note: Hinglish ke liye Swara/Madhur best hain, bhale hi script english ho.
-        self.hindi_voice = "hi-IN-SwaraNeural"
-        self.english_voice = "en-US-AriaNeural" # english bolegi
+        self._ensure_models_exist()
 
-    def detect_language(self, text):
+        if TTS_Engine._kokoro is None:
+            print("Loading Kokoro ONNX on CPU...")
+            try:
+                # Standard Opset 20 Model
+                TTS_Engine._kokoro = Kokoro("kokoro-v0_19.onnx", "voices.bin")
+                print("Kokoro Loaded Successfully (Opset 20 Supported). 🟢")
+            except Exception as e:
+                print(f"CRITICAL ERROR: {e}")
+
+        self.hindi_voice = "af_bella"
+        self.english_voice = "af_sarah"
+
+    def _ensure_models_exist(self):
+        files = ["kokoro-v0_19.onnx", "voices.bin"]
+        base_url = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/"
+
+        for file in files:
+            if not os.path.exists(file):
+                print(f"Downloading {file}...")
+                try:
+                    urllib.request.urlretrieve(base_url + file, file)
+                    print(f"Downloaded {file}")
+                except Exception as e:
+                    print(f"Failed to download {file}: {e}")
+
+    @classmethod
+    def stop(cls):
+        cls._is_speaking = False
+        cls._stop_event.set()
+        if pygame.mixer.get_init():
+            pygame.mixer.music.stop()
+            pygame.mixer.music.unload()
+
+    # NEW STREAMING FUNCTION
+    def speak_stream(self, text_generator):
         """
-        Modified Logic:
-        1. Check Devanagari (Proper Hindi)
-        2. Check Hinglish Keywords (Latin Script Hindi)
+        Streaming Mode: LLM se chunks lekar turant bolna shuru karta hai.
+        Latnecy: ~1s
         """
-        text_lower = text.lower()
+        if TTS_Engine._kokoro is None:
+            print("❌ Kokoro not loaded.")
+            return
 
-        #  Check Devanagari script (अ, आ, क...)
-        if re.search(r'[\u0900-\u097F]', text):
-            return "hi"
+        TTS_Engine.stop()
+        TTS_Engine._stop_event.clear()
+        TTS_Engine._is_speaking = True
 
-        #  Check Hinglish Keywords
-        # Ye common shabd hain jo english sentences mein nahi hote
-        hinglish_triggers = [
-            "hai", "hian", "kya", "nahi", "nahin", "main", "tum", "aap", "hum",
-            "bhai", "yaar", "arre", "are", "kaise", "thik", "theek", "acha",
-            "bohot", "bahut", "samajh", "lekin", "magar", "kyunki", "kaun",
-            "kaha", "kab", "kuch", "matlab", "shukriya", "dhanyavad", "namaste"
-        ]
+        # Audio Queue (Generator -> Queue -> Player)
+        audio_queue = queue.Queue()
 
-        # Check if any trigger word exists in text
-        # 'space' check zaroori hai taaki "main" (hindi) aur "main" (english) confuse na ho,
+        # Thread 1: Text Process & Generate Audio
+        gen_thread = threading.Thread(
+            target=self._stream_generator,
+            args=(text_generator, audio_queue)
+        )
 
-        for word in hinglish_triggers:
-            # Word boundary check (\b) taaki "that" mein "ha" match na ho jaye
-            if re.search(r'\b' + word + r'\b', text_lower):
-                return "hi"
+        # Thread 2: Play Audio from Queue
+        play_thread = threading.Thread(
+            target=self._stream_player,
+            args=(audio_queue,)
+        )
 
-        return "en"
+        gen_thread.start()
+        play_thread.start()
 
-    def determine_emotion(self, text):
-        rate = "+0%"
-        pitch = "+0Hz"
+    def _stream_generator(self, text_generator, audio_queue):
+        sentence_buffer = ""
+        # Regex: Newline, Comma, Fullstop etc.
+        sentence_endings = re.compile(r'(?<=[.?!])\s|\n|[,]')
 
-        if "!" in text:
-            rate = "+10%"
-            pitch = "+5Hz"
-        elif "..." in text or "sad" in text.lower():
-            rate = "-10%"
-            pitch = "-5Hz"
-        elif "?" in text:
-            pitch = "+2Hz"
-
-        return rate, pitch
-
-    async def _generate_audio(self, text, voice, rate, pitch):
-        communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
-        audio_data = io.BytesIO()
-
-        async for chunk in communicate.stream():
-            if chunk['type'] == 'audio':
-                audio_data.write(chunk['data'])
-
-        audio_data.seek(0)
-        return audio_data
-
-    def speak(self, text):
-        # 1. Detect Language
-        lang = self.detect_language(text)
-
-        if lang == "hi":
-            selected_voice = self.hindi_voice
-            print(f"[AI - Hindi ({selected_voice})]: {text}")
-        else:
-            selected_voice = self.english_voice
-            print(f"[AI - English ({selected_voice})]: {text}")
-
-        # 2. Emotion
-        rate, pitch = self.determine_emotion(text)
-
-        # 3. Async & Play
         try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            for chunk in text_generator:
+                if TTS_Engine._stop_event.is_set(): break
 
-        mp3_fp = loop.run_until_complete(self._generate_audio(text, selected_voice, rate, pitch))
+                sentence_buffer += chunk
 
-        pygame.mixer.music.load(mp3_fp)
-        pygame.mixer.music.play()
+                parts = sentence_endings.split(sentence_buffer)
 
-        while pygame.mixer.music.get_busy():
-            pygame.time.Clock().tick(10)
+                if len(parts) > 1:
+                    to_process = parts[:-1]
+                    sentence_buffer = parts[-1]
+
+                    for sentence in to_process:
+                        if len(sentence.strip()) > 1:
+                            audio_data = self._generate_audio_bytes(sentence)
+                            if audio_data:
+                                # ✅ CHANGE: Audio ke saath Text bhi bhejo (Tuple)
+                                audio_queue.put((audio_data, sentence.strip()))
+
+            if sentence_buffer.strip():
+                audio_data = self._generate_audio_bytes(sentence_buffer)
+                if audio_data:
+                    # ✅ CHANGE: Last chunk
+                    audio_queue.put((audio_data, sentence_buffer.strip()))
+
+        except Exception as e:
+            print(f"Streaming Gen Error: {e}")
+        finally:
+            audio_queue.put(None)
 
 
-if __name__ == "__main__":
-    tts = TTS_Engine()
+    def _generate_audio_bytes(self, text):
+        """Helper: Text -> WAV Bytes"""
+        try:
+            # Generate Audio (Fastest Settings)
+            samples, sample_rate = TTS_Engine._kokoro.create(
+                text,
+                voice=self.english_voice,
+                speed=1.0,
+                lang="en-us"
+            )
 
-    try:
-      # trigger Swara
-        tts.speak("Arre yaar! Ye code finally chal gaya! Maza aa gaya bhai!")
-        time.sleep(1)
+            audio_buffer = io.BytesIO()
+            sf.write(audio_buffer, samples, sample_rate, format='WAV')
+            audio_buffer.seek(0)
+            return audio_buffer
+        except Exception as e:
+            print(f"Gen Error: {e}")
+            return None
 
-        # trigger Swara
-        tts.speak("Lekin... abhi bhi ek error aa raha hai... samajh nahi aa raha kya karun.")
-        time.sleep(1)
+    def _stream_player(self, audio_queue):
+        """Queue se audio nikal kar play karta hai aur text print karta hai"""
+        first_chunk = True
+        start_time = time.perf_counter()
 
-        # Should trigger Aria
-        tts.speak("System initialization complete. Switching to English mode.")
-        time.sleep(1)
+        while True:
+            if TTS_Engine._stop_event.is_set(): break
 
-        #  trigger Swara
-        tts.speak("नमस्ते, सब ठीक है?")
+            # Queue se packet nikalo
+            packet = audio_queue.get()
 
-    except KeyboardInterrupt:
-        print("\nStopped.")
+            if packet is None:  # End of stream
+                break
+
+            # Packet unpack karo (Audio + Text)
+            audio_data, text_segment = packet
+
+            # Latency calculate karo (sirf pehle chunk ke liye meaningful hai, par har baar dikha sakte ho)
+            current_latency = (time.perf_counter() - start_time) * 1000
+
+            if first_chunk:
+                print(f"🚀 Streaming Started! (First Byte: {current_latency:.0f}ms)")
+                first_chunk = False
+
+            # Play Audio
+            try:
+                # 🗣️ PRINT TEXT SYNCED WITH AUDIO
+                print(f"🤖 Sarah: '{text_segment}'")
+
+                pygame.mixer.music.load(audio_data)
+                pygame.mixer.music.play()
+
+                while pygame.mixer.music.get_busy():
+                    if TTS_Engine._stop_event.is_set():
+                        pygame.mixer.music.stop()
+                        return
+                    time.sleep(0.05)
+            except Exception as e:
+                print(f"Playback Error: {e}")
+
+        TTS_Engine._is_speaking = False
+
+    # --- OLD SIMPLE SPEAK (Backward Compatibility) ---
+    def speak(self, text):
+        # Ise use karo agar text chhota hai (Not streaming)
+        # Main logic wahi hai bas generator bana ke stream ko pass kar do
+        def simple_gen():
+            yield text
+
+        self.speak_stream(simple_gen())

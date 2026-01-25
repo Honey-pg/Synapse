@@ -7,15 +7,15 @@ class LLM_Engine:
     def __init__(self):
         # Sarah System Prompt (Strict Language Enforcer)
         system_instructions = """
-        You are Sarah, a witty and helpful AI Assistant.
+                You are Sarah, a witty conversational AI. 
 
-        STRICT RULES:
-        1. LANGUAGE: You must speak ONLY in English or Hindi (Hinglish).
-        2. NO HALLUCINATIONS: If the user input is gibberish, random characters, or a language you don't understand, simply ask "Can you repeat that?"
-        3. HINDI SUPPORT: If the user speaks Hindi, reply in Hinglish (Hindi written in English alphabet).
-        4. Do NOT generate text in Spanish, French, Welsh, or any other language.
-        5. Keep answers short and direct.
-        """
+                STRICT RULES:
+                1. LANGUAGE: Speak ONLY in English or Hindi (Hinglish).
+                2. NO HALLUCINATIONS: If input is gibberish, say "Can you repeat that?".
+                3. FORMAT: Break responses into short, punchy sentences. Use new lines for pauses.
+                4. Do NOT start sentences with "The user said" or "You said".
+                5. Do not output long paragraphs.
+                """
 
         self.history = [
             {"role": "system", "content": system_instructions}
@@ -52,22 +52,32 @@ class LLM_Engine:
         You are a Data Extraction AI. You will receive a sentence about a person.
         You MUST return the output in VALID JSON format with keys: 'name' and 'info'.
         Rules:
-        1. Extract the name.
+        1. Extract the name (Capitalize first letter).
         2. 'info': Summarize details into a short string.
-        3. Return ONLY raw JSON. No markdown.
+        3. If no name is found, return "name": "Unknown".
+        4. Return ONLY raw JSON. No markdown, no explanations.
         """
+
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_text}
         ]
+
         try:
+            print(f"🧠 Brain Extracting info from: '{user_text}'...")
+
             response = ollama.chat(model='qwen2.5:3b-instruct', messages=messages)
             content = response['message']['content']
+
+            # Cleaning (Jo tune likha tha)
             content = content.replace("```json", "").replace("```", "").strip()
+
             return json.loads(content)
+
         except Exception as e:
-            print(f"JSON Error: {e}")
-            return None
+            print(f"JSON Extraction Error: {e}")
+            # Fallback agar JSON fail ho jaye
+            return {"name": "Unknown", "info": user_text}
 
     def get_name(self, text):
         # DEBUG PRINT: Whisper output check karne ke liye
@@ -139,7 +149,7 @@ class LLM_Engine:
             response = ollama.chat(model='qwen2.5:3b-instruct', messages=messages)
             content = response['message']['content'].strip()
 
-            # --- THE NUCLEAR OPTION (Python Fallback) ---
+            # THE NUCLEAR OPTION (Python Fallback)
             if content.startswith('{') or "{" in content:
                 print("⚠️ LLM failed (Gave JSON). Using Python fallback.")
                 try:

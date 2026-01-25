@@ -8,7 +8,6 @@ import pickle
 import json
 import colorama
 from thefuzz import process
-from python.engine.tts_engine import TTS_Engine
 
 
 class Vision_Pro:
@@ -18,7 +17,8 @@ class Vision_Pro:
 
         self.app = FaceAnalysis(
             name='buffalo_l',
-            providers=['CPUExecutionProvider']
+            root='C:/Users/priya/.insightface',
+            providers=['CUDAExecutionProvider']
         )
 
         # buffallo_l model use kar raha hai agar
@@ -95,80 +95,110 @@ class Vision_Pro:
         print(colorama.Fore.GREEN + f"[Vision] Loaded {len(self.known_names)} identities.")
 
     def register_face(self, frame, name, info_dict, tts_engine):
+
+        # --- ⏳ HELPER: Bolne ka wait karo, fir user ko time do ---
+        def speak_and_wait(text, wait_for_user_seconds=0):
+            tts_engine.speak(text)
+            time.sleep(0.5)  # Thread start hone ka chhota buffer
+
+            # Jab tak Sarah bol rahi hai, code yahi roka rahega
+            while tts_engine._is_speaking:
+                time.sleep(0.1)
+
+            # Ab Sarah chup hai, User ko time do move karne ka
+            if wait_for_user_seconds > 0:
+                print(f"Waiting {wait_for_user_seconds}s for user action...")
+                time.sleep(wait_for_user_seconds)
+
+        # ---------------------------------------------------------
+
         # 1. FRONT FACE (Jo frame pass hua hai use hi use kar lo)
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         faces = self.app.get(rgb_frame)
 
         if len(faces) == 0:
             print(f'No faces detected')
+            speak_and_wait("I can't see your face. Please look at the camera.", 0)
             return False
 
-        tts_engine.speak("Hold on, capturing front view.")
-        # front face capture
+        speak_and_wait("Hold on, capturing front view.", 0)
+
+        # Capture Front
         face_straight = sorted(faces, key=lambda x: x.bbox[2] * x.bbox[3])[-1]
         embedding_straight = face_straight.embedding
 
-        # 2. left face
-        tts_engine.speak("Now turn your face slightly to the left.")
-        time.sleep(2)  # User ko time do
+        # 2. LEFT FACE
+        speak_and_wait("Now turn your face slightly to the left.", wait_for_user_seconds=3)  # ✅ 3 Sec ka gap
 
-        ret, frame_left = self.cap.read()  # NEW PHOTO
+        ret, frame_left = self.cap.read()  # Ab photo lo
         if not ret: return False
 
         rgb_left = cv2.cvtColor(frame_left, cv2.COLOR_BGR2RGB)
         faces_left = self.app.get(rgb_left)
 
         if len(faces_left) == 0:
-            tts_engine.speak("Face not found in left view, using front view instead.")
+            speak_and_wait("Face not found in left view, using front view instead.", 0)
             embedding_left = embedding_straight  # Fallback
         else:
             face_left_obj = sorted(faces_left, key=lambda x: x.bbox[2] * x.bbox[3])[-1]
             embedding_left = face_left_obj.embedding
 
-        # right face lelo
-        tts_engine.speak("Now turn slightly to the right.")
-        time.sleep(2)
+        # 3. RIGHT FACE
+        speak_and_wait("Now turn slightly to the right.", wait_for_user_seconds=3)  # ✅ 3 Sec ka gap
 
-        ret, frame_right = self.cap.read()  # <--- NEW PHOTO
+        ret, frame_right = self.cap.read()
         if not ret: return False
 
         rgb_right = cv2.cvtColor(frame_right, cv2.COLOR_BGR2RGB)
         faces_right = self.app.get(rgb_right)
 
         if len(faces_right) == 0:
-            tts_engine.speak("Face not found in right view, using front view instead.")
+            speak_and_wait("Face not found in right view, using front view instead.", 0)
             embedding_right = embedding_straight  # Fallback
         else:
             face_right_obj = sorted(faces_right, key=lambda x: x.bbox[2] * x.bbox[3])[-1]
-            embedding_right = face_right_obj.embedding  # <--- CORRECTED
+            embedding_right = face_right_obj.embedding
 
-        # info sunte hi json me dump karo
+        # 4. SMILE (Optional but Good)
+        speak_and_wait("Okay, now look at the camera and give me a big smile.", wait_for_user_seconds=2)
+
+        ret, frame_smile = self.cap.read()
+        embedding_smile = embedding_straight  # Default fallback
+        if ret:
+            rgb_smile = cv2.cvtColor(frame_smile, cv2.COLOR_BGR2RGB)
+            faces_smile = self.app.get(rgb_smile)
+            if len(faces_smile) > 0:
+                face_smile_obj = sorted(faces_smile, key=lambda x: x.bbox[2] * x.bbox[3])[-1]
+                embedding_smile = face_smile_obj.embedding
+
+        # --- DATABASE INSERTION ---
         json_info = json.dumps(info_dict)
 
         # Binary convert
         binary_enc_straight = pickle.dumps(embedding_straight)
         binary_enc_left = pickle.dumps(embedding_left)
         binary_enc_right = pickle.dumps(embedding_right)
+        binary_enc_smile = pickle.dumps(embedding_smile)
 
-        # 3 Rows Insert karo
+        # 4 Rows Insert karo (Front, Left, Right, Smile)
         self.cursor.execute("INSERT INTO humans (name, embedding, info) VALUES (?, ?, ?)",
                             (name, binary_enc_straight, json_info))
         self.cursor.execute("INSERT INTO humans (name, embedding, info) VALUES (?, ?, ?)",
                             (name, binary_enc_left, json_info))
         self.cursor.execute("INSERT INTO humans (name, embedding, info) VALUES (?, ?, ?)",
                             (name, binary_enc_right, json_info))
+        self.cursor.execute("INSERT INTO humans (name, embedding, info) VALUES (?, ?, ?)",
+                            (name, binary_enc_smile, json_info))  # Smile entry
+
         self.conn.commit()
 
-        # List length barabar honi chahiye
-        self.known_embeddings.append(embedding_straight)
-        self.known_embeddings.append(embedding_left)
-        self.known_embeddings.append(embedding_right)
+        # Update Memory
+        self.known_embeddings.extend([embedding_straight, embedding_left, embedding_right, embedding_smile])
+        self.known_names.extend([name, name, name, name])
+        self.known_info.extend([info_dict, info_dict, info_dict, info_dict])
 
-        # Name aur Info ko bhi 3 baar add karna padega taaki index match ho
-        self.known_names.extend([name, name, name])
-        self.known_info.extend([info_dict, info_dict, info_dict])
-        tts_engine.speak(f"Now I will remember you {name}.")
-        print(colorama.Fore.GREEN + f"[Vision] Registered new face: {name} (3 Angles)")
+        speak_and_wait(f"Done! I have successfully registered {name}.", 0)
+        print(colorama.Fore.GREEN + f"[Vision] Registered new face: {name} (4 Angles)")
         return True
 
     def recognize(self, frame):
@@ -192,7 +222,7 @@ class Vision_Pro:
                 best_idx = np.argmax(sims)
                 max_score = sims[best_idx]
 
-                if max_score > 0.5:
+                if max_score > 0.4:
                     name = self.known_names[best_idx]
                     info = self.known_info[best_idx]
 
@@ -223,19 +253,40 @@ class Vision_Pro:
             found_names.append(name)
         return found_names
 
-    def get_info(self, name):
-        # Safety check: If name is None or not in our database
-        if name is None:
+    def get_info(self, name_query):
+        """
+        Retrieves info from DB using Smart/Fuzzy Matching.
+        Agar user 'Ankit' bole aur DB me 'Ankit Dandotia' ho, to bhi pakad lega.
+        """
+        try:
+            # 1. Pehle EXACT match try karo (Fastest)
+            self.cursor.execute("SELECT name, info FROM humans WHERE name LIKE ?", (name_query,))
+            row = self.cursor.fetchone()
+
+            if row:
+                return row[0], json.loads(row[1])
+
+            # 2. Agar Exact nahi mila, to PARTIAL match try karo
+            # Example: name_query="Ankit" -> Dhoondo jiske naam me "Ankit" aata ho
+            pattern = f"%{name_query}%"
+            self.cursor.execute("SELECT name, info FROM humans WHERE name LIKE ?", (pattern,))
+            row = self.cursor.fetchone()
+
+            if row:
+                # DB wala full name return karo (e.g., 'Ankit Dandotia')
+                print(f"[DB] Partial match found: '{name_query}' -> '{row[0]}'")
+                return row[0], json.loads(row[1])
+
+            # 3. DEBUG: Agar kuch nahi mila to batao DB me kya hai
+            print(f"[DB] '{name_query}' not found. Dumping all names in DB for check:")
+            self.cursor.execute("SELECT DISTINCT name FROM humans")
+            all_names = self.cursor.fetchall()
+            print([n[0] for n in all_names])
+
             return None
-        if name not in self.known_names:
-            return None
-        best_match, score = process.extractOne(name, self.known_names)
-        print(f"Debug : input {name} with {best_match} and {score}")
-        if score > 75:
-            idx = self.known_names.index(best_match)
-            return best_match,self.known_info[idx]
-        else:
-            print(f"Can't recognize {name}")
+
+        except Exception as e:
+            print(f"DB Error: {e}")
             return None
 
 

@@ -21,7 +21,9 @@ class STT_Engine:
         print(colorama.Fore.GREEN + f"[STT] Model loaded in {time.time() - start_time:.2f} seconds")
         
         self.recognizer = sr.Recognizer()
-        self.recognizer.pause_threshold = 0.6
+        self.recognizer.pause_threshold = 1.2
+        self.recognizer.energy_threshold = 4000
+        self.recognizer.dynamic_energy_threshold = True
 
     def listen(self):
         with sr.Microphone() as source:
@@ -31,7 +33,7 @@ class STT_Engine:
             
             try:
                 # Sunna shuru karo
-                audio = self.recognizer.listen(source, timeout=5, phrase_time_limit=10)
+                audio = self.recognizer.listen(source, timeout=5, phrase_time_limit=None)
                 
                 # Raw Audio Processing (Fastest Method)
                 raw_data = audio.get_raw_data(convert_rate=16000, convert_width=2)
@@ -43,13 +45,32 @@ class STT_Engine:
                     audio_np,
                     beam_size=5,
                     # 1. Ye prompt model ko batata hai ki Hinglish expect kare
-                    initial_prompt="This is a conversation in Hindi and English. Ye baat cheet Hindi aur English mein ho rahi hai.",
+                    initial_prompt="Priyadarshan, Trinetra, Jarvis, Ankit, Prerak,Dandotia, Hindi, English, Code, Python",
                     # 2. Temperature 0 karne se wo creative nahi banta (Hallucination kam hoti hai)
                     temperature=0.0,
                     # 3. Pichli baat se confuse na ho (Commands ke liye acha hai)
                     condition_on_previous_text=False
                 )
                 text = " ".join([segment.text for segment in segments])
+                hallucinations = [
+                    "thank you", "thanks", "you", "watching", "subtitles",
+                    "copyright", "audio", "bye", "amara", "org",
+                    "the user speaks in hinglish",  # <--- YE HAI CULPRIT
+                    "user speaks in hinglish",
+                    "thank you for watching"
+                ]
+                # Agar text sirf hallucination hai -> Ignore
+                # (e.g., Sirf "Thank you." aaya to ignore, par "Thank you Jarvis" aaya to chalega)
+                clean_text = text.lower().replace(".", "").strip()
+                if clean_text in hallucinations:
+                    print(f"🚫 Ignored Hallucination: '{text}'")
+                    return None
+                if len(clean_text.split()) > 3 and len(set(clean_text.split())) == 1:
+                    print(f"🚫 Ignored Repetitive Loop: '{text}'")
+                    return None
+
+                if "hindi" in clean_text and len(clean_text) < 10:
+                    return None
 
                 if text.strip():
                     return text.strip()
