@@ -90,5 +90,5 @@ ultralytics-thop==2.0.18
 urllib3==2.6.3
 wcwidth==0.2.14
 yarl==1.22.0
-yt-dlp
+yt-dlp==2026.1.31
 
