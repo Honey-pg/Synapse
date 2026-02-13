@@ -3,6 +3,8 @@ import speech_recognition as sr
 import numpy as np
 import time
 import colorama
+from python.engine.logger import logger
+import python.engine.events as events
 import os
 
 # Colors init
@@ -24,11 +26,18 @@ class STT_Engine:
         self.recognizer = sr.Recognizer()
         self.recognizer.pause_threshold = 0.6
 
-    def listen(self):
+    def listen(self, session_id=None):
         with sr.Microphone() as source:
             # Noise adjust
             self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
             print(colorama.Fore.YELLOW + "\n[Listening]...", end="", flush=True)
+            
+            if session_id:
+                logger.log_event(
+                    event_name=events.STT_REQUEST,
+                    event_data={"device": "default_mic"},
+                    session_id=session_id
+                )
             
             try:
                 # Sunna shuru karo
@@ -43,6 +52,12 @@ class STT_Engine:
                 text = " ".join([segment.text for segment in segments])
 
                 if text.strip():
+                    if session_id:
+                        logger.log_event(
+                            event_name=events.STT_RESPONSE,
+                            event_data={"text": text.strip()},
+                            session_id=session_id
+                        )
                     return text.strip()
                 else:
                     return None
@@ -51,6 +66,13 @@ class STT_Engine:
                 return None
             except Exception as e:
                 print(colorama.Fore.RED + f"\nError: {e}")
+                if session_id:
+                    logger.log_event(
+                        event_name=events.STT_ERROR,
+                        event_data={"error": str(e)},
+                        session_id=session_id,
+                        level="ERROR"
+                    )
                 return None
 
 # Ye helper function class ke bahar hi thik hai 

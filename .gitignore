@@ -53,3 +53,7 @@ vision_pro.db
 # --- OS Specific ---
 .DS_Store
 Thumbs.db
+
+# --- Logging ---
+app.log
+app.log.*

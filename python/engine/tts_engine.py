@@ -2,6 +2,8 @@ import edge_tts
 import pygame
 import asyncio
 import io
+from python.engine.logger import logger
+import python.engine.events as events
 
 class TTS_Engine:
     def __init__(self):
@@ -24,8 +26,15 @@ class TTS_Engine:
         audio_data.seek(0)
         return audio_data
 
-    def speak(self, text):
+    def speak(self, text, session_id=None):
         print(f"[AI]: {text}") # Terminal me dikhane ke liye
+        
+        if session_id:
+            logger.log_event(
+                event_name=events.TTS_REQUEST,
+                event_data={"text": text},
+                session_id=session_id
+            )
         
         # Async function ko Sync tareeke se call karna
         try:
@@ -44,6 +53,13 @@ class TTS_Engine:
         # Wait karo jab tak audio khatam na ho (Blocking Call)
         while pygame.mixer.music.get_busy():
             pygame.time.Clock().tick(10)
+
+        if session_id:
+            logger.log_event(
+                event_name=events.TTS_RESPONSE,
+                event_data={"status": "success"},
+                session_id=session_id
+            )
 
 # Testing Section 
 if __name__ == "__main__":
